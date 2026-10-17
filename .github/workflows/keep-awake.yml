@@ -1,0 +1,37 @@
+name: Keep Castor awake
+
+# Public heartbeat repo (created 2026-10-16 at unkno's choice): GitHub never
+# runs scheduled workflows on PRIVATE repos for free accounts, so the robot
+# lives here. It only contains this file + a daily BEAT.md - no app code,
+# no database, nothing private. Public repos get free unlimited Actions.
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wake the Render server
+        run: |
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 90 https://pharmacy-delivery-jgkw.onrender.com/api/health)
+          echo "health -> HTTP $code"
+          [ "$code" = "200" ]
+
+      - name: Daily heartbeat commit (repo must show activity or GitHub disables the schedule after 60 quiet days)
+        if: github.event_name == 'schedule'
+        run: |
+          if [ "$(date -u +%H)" = "00" ]; then
+            git clone "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" beat
+            cd beat
+            git config user.name "keep-awake-bot"
+            git config user.email "keep-awake-bot@users.noreply.github.com"
+            echo "last beat: $(date -u +%Y-%m-%dT%H:%M:%SZ)" > BEAT.md
+            git add BEAT.md
+            git commit -m "daily heartbeat" || exit 0
+            git push
+          fi
